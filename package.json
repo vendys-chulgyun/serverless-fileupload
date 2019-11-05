@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@material-ui/core": "^4.5.2",
+    "@material-ui/icons": "^4.5.1",
     "aws-sdk": "^2.562.0",
     "filepond": "^4.7.4",
+    "moment-timezone": "^0.5.27",
     "react": "^16.11.0",
     "react-dom": "^16.11.0",
     "react-filepond": "^7.0.1",

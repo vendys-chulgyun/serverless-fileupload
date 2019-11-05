@@ -1,9 +1,18 @@
 import React, { Component }  from 'react';
+import { makeStyles, withStyles } from '@material-ui/core/styles';
+import 'filepond/dist/filepond.min.css';
 import { FilePond, registerPlugin } from 'react-filepond';
 import * as aws from './aws';
-
-import 'filepond/dist/filepond.min.css';
 import config from './config';
+
+
+import PhotoCardList from './PhotoCardList';
+
+const useStyles = makeStyles(theme => ({
+    fileupload: {
+        position: 'fix'
+    },
+}));
 
 class MainT extends Component {
 
@@ -15,48 +24,37 @@ class MainT extends Component {
         this.state = {
             // Set initial files, type 'local' means this is a file
             // that has already been uploaded to the server (see docs)
-            files: [{
-                source: 'index.html',
-                options: {
-                    type: 'local'
-                }
-            }]
+            files: [
+            //     {
+            //     source: 'index.html',
+            //     options: {
+            //         type: 'local'
+            //     }
+            // }
+            ],
+            photos: [],
         };
         console.log(this.state);
     }
-    async componentWillMount() {
+    componentWillMount() {
         console.log('### will mount', this.state);
-        await aws.s3.listObjects({
-            Delimiter: '/'
-        }, function (err, data) {
-            console.log('### will mount aws callback');
-            if (err) {
-                return alert('There was an error listing your albums: ' + err.message);
-            } else {
-                console.log('앨범 data', data);
-                console.log('앨범', data.CommonPrefixes)
-                const albums = data.CommonPrefixes.map(function (commonPrefix) {
-                    const prefix = commonPrefix.Prefix;
-                    return {
-                        source: decodeURIComponent(prefix.replace('/', '')), 
-                        options: {
-                            type: 'local'
-                        }
-                    };
-                });
-                console.log(albums);
-                // this.setState({
-                //     files: fileItems.map(fileItem => fileItem.file)
-                // });
-
-            }
-        });
-        console.log('### will mount end');
-
+        this.viewAlbum();
     }
 
     componentDidMount() {
         console.log('### did mount', this.state);
+    }
+
+    componentWillUpdate() {
+        console.log('### will update', this.state);
+    }
+
+    viewAlbum() {
+        aws.viewAlbum((data) => {
+            console.log('### list callback', data);
+            this.setState({photos: data});
+            console.log(this.state);
+        });
     }
 
     handleInit = () => {
@@ -67,8 +65,8 @@ class MainT extends Component {
 
                     // fieldName is the name of the input field
                     // file is the actual file object to send
-                    const formData = new FormData();
-                    formData.append(fieldName, file, file.name);
+                    // const formData = new FormData();
+                    // formData.append(fieldName, file, file.name);
         
                     // const request = new XMLHttpRequest();
                     // request.open('POST', 'url-to-api');
@@ -95,55 +93,35 @@ class MainT extends Component {
         
                     // request.send(formData);
 ////////////////
-                    const albumName = file.name;
-                    if (!albumName) {
-                        return alert('Album names must contain at least one non-space character.');
-                    }
-                    if (albumName.indexOf('/') !== -1) {
-                        return alert('Album names cannot contain slashes.');
-                    }
-                    var albumKey = encodeURIComponent(albumName) + `/${config.storage}` ;
-                    const request = aws.s3.headObject({
-                        Key: albumKey
-                    }, function (err, data) {
-                        if (!err) {
-                            return alert('Album already exists.');
-                        }
-                        if (err.code !== 'NotFound') {
-                            return alert('There was an error creating your album: ' + err.message);
-                        }
-                        const putRequest = aws.s3.putObject({
-                            Key: albumKey
-                        }, function (err, data) {
-                            if (err) {
-                                return alert('There was an error creating your album: ' + err.message);
-                            }
-                            alert('Successfully created album.');
-                            // viewAlbum(albumName);
-                        });
-
-                        putRequest.on('httpUploadProgress', function (progress) {
-                            console.log(progress.loaded + " of " + progress.total + " bytes--- put");
-                            
-                        });
-                    });
-console.log(request);
+console.log('### file process start');
+                    const request = aws.addPhoto(file);
+// console.log(request);
                     request.on('httpUploadProgress', function (progress) {
                         console.log(progress.loaded + " of " + progress.total + " bytes");
                         
                     });
-                    console.log(request.upload);
-                    request.httpRequest.upload.progress = (e) => {
+                    // console.log(request.upload);
+                    request.progress = (e) => {
                         console.log('#### onprogress');
                         progress(e.lengthComputable, e.loaded, e.total);
                     };
-                    
+                    request.on('complete',(a, b, c)=>{
+                        console.log('### add complete', a,b ,c);
+                    })
+                    request.send((err, data) => {
+                        if (err) {
+                            console.log(err);
+                            return alert('There was an error uploading your photo: ', err.message);
+                        }
+                        console.log('Successfully uploaded photo.');
+                        this.viewAlbum();
+                    });
 ///////////////////////                    
                     // Should expose an abort method so the request can be cancelled
                     return {
                         abort: () => {
                             // This function is entered if the user has tapped the cancel button
-                            request.abort();
+                            request.abort.bind(request);
         
                             // Let FilePond know the request has been cancelled
                             abort();
@@ -225,29 +203,37 @@ console.log(request);
         })
     }
 
+    deletePhoto = async (id) => {
+        await aws.deletePhoto(id);
+        console.log('### delete compl');
+        this.viewAlbum();
+    }
+
     render() {
+        const { classes } = this.props;
         return (
             <div className="App">
                 {/* Pass FilePond properties as attributes */}
-                <FilePond ref={ref => this.pond = ref}
-                        files={this.state.files}
-                        allowMultiple={true}
-                        maxFiles={3} 
-                        server="/"
-                        oninit={() => this.handleInit() }
-                        onupdatefiles={fileItems => {
-                            // Set currently active file objects to this.state
-                            console.log(fileItems);
-                            this.setState({
-                                files: fileItems.map(fileItem => fileItem.file)
-                            });
-                        }}>
+                <FilePond 
+                    style="position: fix"
+                    ref={ref => this.pond = ref}
+                    files={this.state.files}
+                    allowMultiple={true}
+                    maxFiles={3} 
+                    // server="/"
+                    oninit={() => this.handleInit() }
+                    onupdatefiles={fileItems => {
+                        // Set currently active file objects to this.state
+                        this.setState({
+                            files: fileItems.map(fileItem => fileItem.file)
+                        });
+                    }}>
                 </FilePond>
-                
+                    <PhotoCardList photos={this.state.photos} handle={this.deletePhoto}/>
             </div>
 
         );
     }
 }
 
-export default MainT;
+export default withStyles(useStyles)(MainT);
